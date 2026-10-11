@@ -5,56 +5,37 @@ FreeBSD, OpenBSD, NetBSD ; TCP et UDP.
 
 ## Installation
 
-### Linux et macOS
+Une seule commande, sans rien d'autre à installer (ni Rust, ni Visual Studio) :
+elle télécharge le petit binaire (moins de 1 Mo) de la dernière version.
 
-Télécharge le binaire de la dernière version pour votre système et l'installe
-dans `/usr/local/bin` :
+**Linux et macOS**
 
 ```sh
-V=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/cyrilleadjalala/freeport/releases/latest); V=${V##*/}
-case "$(uname -s)-$(uname -m)" in
-  Linux-x86_64)               T=x86_64-unknown-linux-musl ;;
-  Linux-aarch64|Linux-arm64)  T=aarch64-unknown-linux-musl ;;
-  Darwin-x86_64)              T=x86_64-apple-darwin ;;
-  Darwin-arm64)               T=aarch64-apple-darwin ;;
-  *) echo "plateforme non prise en charge" >&2; false ;;
-esac &&
-curl -fsSL "https://github.com/cyrilleadjalala/freeport/releases/download/$V/freeport-$V-$T.tar.gz" | tar xz &&
-sudo mv "freeport-$V-$T/freeport" /usr/local/bin/ && rm -rf "freeport-$V-$T" &&
-freeport --version
+curl -fsSL https://raw.githubusercontent.com/cyrilleadjalala/freeport/main/install.sh | sh
 ```
 
-Les binaires Linux sont statiques : ils fonctionnent sur toute distribution,
-quelle que soit la version de glibc.
+Installe dans `/usr/local/bin` si le dossier est accessible en écriture
+(par exemple en root), sinon dans `~/.local/bin`.
 
-### Windows (PowerShell)
-
-Installe `freeport.exe` dans `%LOCALAPPDATA%\freeport` et l'ajoute au `PATH`
-de l'utilisateur (ouvrir un nouveau terminal ensuite) :
+**Windows (PowerShell)**
 
 ```powershell
-$V = (Invoke-RestMethod https://api.github.com/repos/cyrilleadjalala/freeport/releases/latest).tag_name
-$T = "x86_64-pc-windows-msvc"; $Dir = "$env:LOCALAPPDATA\freeport"
-Invoke-WebRequest "https://github.com/cyrilleadjalala/freeport/releases/download/$V/freeport-$V-$T.zip" -OutFile "$env:TEMP\freeport.zip"
-Expand-Archive "$env:TEMP\freeport.zip" -DestinationPath $env:TEMP -Force
-New-Item -ItemType Directory -Force $Dir | Out-Null
-Move-Item -Force "$env:TEMP\freeport-$V-$T\freeport.exe" $Dir
-$P = [Environment]::GetEnvironmentVariable("Path", "User")
-if (";$P;" -notlike "*;$Dir;*") { [Environment]::SetEnvironmentVariable("Path", "$P;$Dir", "User") }
+irm https://raw.githubusercontent.com/cyrilleadjalala/freeport/main/install.ps1 | iex
 ```
 
-### Avec Cargo (tous systèmes)
+Installe dans `%LOCALAPPDATA%\freeport` et l'ajoute au `PATH` de l'utilisateur
+(aucun droit administrateur requis).
 
-```sh
-cargo install freeport-cli
-```
+Ensuite : `freeport --version`.
 
-La commande installée s'appelle `freeport`.
+Options : `FREEPORT_VERSION=v0.1.2` pour une version précise,
+`FREEPORT_INSTALL_DIR=<dossier>` pour choisir le dossier d'installation.
 
-### Manuellement
+**Autres méthodes**
 
-Les archives de chaque plateforme sont disponibles dans les
-[releases GitHub](https://github.com/cyrilleadjalala/freeport/releases).
+- Archives par plateforme dans les
+  [releases GitHub](https://github.com/cyrilleadjalala/freeport/releases).
+- Avec Rust déjà installé : `cargo install freeport-cli`.
 
 ## Utilisation
 

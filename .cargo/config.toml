@@ -1,0 +1,4 @@
+# Windows : lie le runtime C statiquement, pour que freeport.exe tourne sur un
+# Windows vierge, sans « Visual C++ Redistributable » à installer.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]
