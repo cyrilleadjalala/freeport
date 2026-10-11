@@ -1,5 +1,7 @@
-//! Recherche des processus qui occupent un port.
+//! Recherche des processus qui occupent un port (via `listeners`, multiplateforme).
 
+use listeners::{Listener, Protocol, SocketState};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,153 +23,92 @@ impl fmt::Display for Proto {
 pub struct Holder {
     pub pid: u32,
     pub name: String,
-    pub cmdline: String,
+    pub path: String,
 }
 
-#[cfg(target_os = "linux")]
-pub use linux::find;
-#[cfg(not(target_os = "linux"))]
-pub use lsof::find;
-
-#[cfg(target_os = "linux")]
-mod linux {
-    use super::{Holder, Proto};
-    use std::collections::HashSet;
-    use std::fs;
-    use std::io;
-
-    /// Extrait les inodes des sockets locales sur `port` d'un fichier /proc/net/*.
-    /// Pour TCP seuls les sockets en écoute (état 0A) comptent ; pour UDP, tous.
-    pub(super) fn parse_inodes(table: &str, port: u16, proto: Proto) -> Vec<u64> {
-        table
-            .lines()
-            .skip(1)
-            .filter_map(|line| {
-                let f: Vec<&str> = line.split_whitespace().collect();
-                if f.len() < 10 {
-                    return None;
-                }
-                let local_port = u16::from_str_radix(f[1].rsplit(':').next()?, 16).ok()?;
-                if local_port != port || (proto == Proto::Tcp && f[3] != "0A") {
-                    return None;
-                }
-                f[9].parse().ok()
-            })
-            .collect()
-    }
-
-    pub fn find(port: u16, proto: Proto) -> io::Result<Vec<Holder>> {
-        let files: &[&str] = match proto {
-            Proto::Tcp => &["/proc/net/tcp", "/proc/net/tcp6"],
-            Proto::Udp => &["/proc/net/udp", "/proc/net/udp6"],
+/// Retient les processus qui occupent `port`. Pour TCP, seuls les sockets en
+/// écoute comptent (les connexions sortantes ou en TIME_WAIT ne bloquent pas
+/// un `bind`). Un même PID n'apparaît qu'une fois (IPv4 + IPv6).
+pub fn select(
+    listeners: impl IntoIterator<Item = Listener>,
+    port: u16,
+    proto: Proto,
+) -> Vec<Holder> {
+    let mut by_pid = BTreeMap::new();
+    for l in listeners {
+        let proto_ok = match proto {
+            Proto::Tcp => l.protocol == Protocol::TCP && l.state == SocketState::Listen,
+            Proto::Udp => l.protocol == Protocol::UDP,
         };
-        let mut inodes = HashSet::new();
-        for file in files {
-            if let Ok(content) = fs::read_to_string(file) {
-                inodes.extend(parse_inodes(&content, port, proto));
-            }
-        }
-        inodes.remove(&0);
-        if inodes.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut holders = Vec::new();
-        for entry in fs::read_dir("/proc")?.flatten() {
-            let Some(pid) = entry.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else {
-                continue;
-            };
-            let Ok(fds) = fs::read_dir(entry.path().join("fd")) else {
-                continue; // processus disparu ou non lisible
-            };
-            let owns = fds.flatten().any(|fd| {
-                fs::read_link(fd.path())
-                    .ok()
-                    .and_then(|l| {
-                        let l = l.to_string_lossy().into_owned();
-                        l.strip_prefix("socket:[")?
-                            .strip_suffix(']')?
-                            .parse::<u64>()
-                            .ok()
-                    })
-                    .is_some_and(|i| inodes.contains(&i))
+        if proto_ok && l.socket.port() == port {
+            by_pid.entry(l.process.pid).or_insert_with(|| Holder {
+                pid: l.process.pid,
+                name: l.process.name,
+                path: l.process.path,
             });
-            if owns {
-                let name = fs::read_to_string(entry.path().join("comm"))
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string();
-                let cmdline = fs::read(entry.path().join("cmdline"))
-                    .map(|b| {
-                        String::from_utf8_lossy(&b)
-                            .trim_end_matches('\0')
-                            .replace('\0', " ")
-                    })
-                    .unwrap_or_default();
-                holders.push(Holder { pid, name, cmdline });
-            }
-        }
-        holders.sort_by_key(|h| h.pid);
-        Ok(holders)
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        const TCP: &str = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
-   0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 12345 1 0000000000000000 100 0 0 10 0
-   1: 0100007F:1F90 0100007F:D2A0 01 00000000:00000000 00:00000000 00000000  1000        0 22222 1 0000000000000000 100 0 0 10 0
-   2: 00000000:0050 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 33333 1 0000000000000000 100 0 0 10 0
-";
-
-        #[test]
-        fn tcp_only_listening_on_port() {
-            assert_eq!(parse_inodes(TCP, 8080, Proto::Tcp), vec![12345]);
-            assert_eq!(parse_inodes(TCP, 80, Proto::Tcp), vec![33333]);
-            assert!(parse_inodes(TCP, 9999, Proto::Tcp).is_empty());
-        }
-
-        #[test]
-        fn udp_ignores_state() {
-            assert_eq!(parse_inodes(TCP, 8080, Proto::Udp), vec![12345, 22222]);
         }
     }
+    by_pid.into_values().collect()
 }
 
-#[cfg(not(target_os = "linux"))]
-mod lsof {
-    use super::{Holder, Proto};
-    use std::io;
-    use std::process::Command;
+pub fn find(port: u16, proto: Proto) -> Result<Vec<Holder>, String> {
+    if !listeners::IS_OS_SUPPORTED {
+        return Err("système d'exploitation non pris en charge".into());
+    }
+    let all = listeners::get_all().map_err(|e| e.to_string())?;
+    Ok(select(all, port, proto))
+}
 
-    pub fn find(port: u16, proto: Proto) -> io::Result<Vec<Holder>> {
-        let spec = match proto {
-            Proto::Tcp => format!("-iTCP:{port}"),
-            Proto::Udp => format!("-iUDP:{port}"),
-        };
-        let mut cmd = Command::new("lsof");
-        cmd.args(["-nP", "-t", &spec]);
-        if proto == Proto::Tcp {
-            cmd.arg("-sTCP:LISTEN");
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use listeners::Process;
+    use std::net::SocketAddr;
+
+    fn l(pid: u32, addr: &str, protocol: Protocol, state: SocketState) -> Listener {
+        Listener {
+            process: Process {
+                pid,
+                name: format!("p{pid}"),
+                path: String::new(),
+            },
+            socket: addr.parse::<SocketAddr>().unwrap(),
+            protocol,
+            state,
         }
-        let out = cmd.output()?;
-        let mut holders: Vec<Holder> = String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter_map(|l| l.trim().parse::<u32>().ok())
-            .map(|pid| {
-                let ps = |field: &str| {
-                    Command::new("ps")
-                        .args(["-p", &pid.to_string(), "-o", field])
-                        .output()
-                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                        .unwrap_or_default()
-                };
-                Holder { pid, name: ps("comm="), cmdline: ps("command=") }
-            })
-            .collect();
-        holders.sort_by_key(|h| h.pid);
-        holders.dedup_by_key(|h| h.pid);
-        Ok(holders)
+    }
+
+    #[test]
+    fn tcp_keeps_only_listening_on_port_and_dedups() {
+        let input = vec![
+            l(10, "0.0.0.0:8080", Protocol::TCP, SocketState::Listen),
+            l(10, "[::]:8080", Protocol::TCP, SocketState::Listen),
+            l(
+                11,
+                "127.0.0.1:8080",
+                Protocol::TCP,
+                SocketState::Established,
+            ),
+            l(12, "0.0.0.0:9090", Protocol::TCP, SocketState::Listen),
+            l(13, "0.0.0.0:8080", Protocol::UDP, SocketState::Unknown),
+        ];
+        let got = select(input, 8080, Proto::Tcp);
+        assert_eq!(got.iter().map(|h| h.pid).collect::<Vec<_>>(), vec![10]);
+    }
+
+    #[test]
+    fn udp_matches_any_state_and_sorts_by_pid() {
+        let input = vec![
+            l(30, "0.0.0.0:5353", Protocol::UDP, SocketState::Unknown),
+            l(20, "[::]:5353", Protocol::UDP, SocketState::Unknown),
+            l(21, "0.0.0.0:5353", Protocol::TCP, SocketState::Listen),
+        ];
+        let got = select(input, 5353, Proto::Udp);
+        assert_eq!(got.iter().map(|h| h.pid).collect::<Vec<_>>(), vec![20, 30]);
+    }
+
+    #[test]
+    fn free_port_gives_nothing() {
+        assert!(select(vec![], 80, Proto::Tcp).is_empty());
     }
 }
