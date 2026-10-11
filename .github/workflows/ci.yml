@@ -24,17 +24,18 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
-      # Le .exe ne doit pas dépendre du runtime Visual C++ (absent d'un Windows vierge).
-      - name: Vérifier le runtime C statique (Windows)
+      # The .exe must not depend on the Visual C++ runtime (missing on a clean Windows).
+      - name: Check the C runtime is static (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cargo build --release --locked
           if (Select-String -Path target\release\freeport.exe -Pattern "VCRUNTIME140" -Quiet) {
-            throw "freeport.exe dépend de VCRUNTIME140.dll : le runtime C n'est pas statique"
+            throw "freeport.exe imports VCRUNTIME140.dll: the C runtime is not static"
           }
 
-  # Les scripts d'installation, tels qu'un utilisateur les lance (dernière release publiée).
+  # The installers: against the latest published release, as users run them, and
+  # offline against a fake release (checksum checks).
   installers:
     name: install-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -49,6 +50,9 @@ jobs:
         run: |
           FREEPORT_INSTALL_DIR="$RUNNER_TEMP/bin" sh ./install.sh
           "$RUNNER_TEMP/bin/freeport" --version
+      - name: install.sh offline tests (checksums)
+        if: runner.os != 'Windows'
+        run: sh tests/install_test.sh
       - name: install.ps1 (PowerShell 7)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -63,8 +67,16 @@ jobs:
           $env:FREEPORT_INSTALL_DIR = "$env:RUNNER_TEMP\bin51"
           Get-Content .\install.ps1 -Raw | Invoke-Expression
           & "$env:RUNNER_TEMP\bin51\freeport.exe" --version
+      - name: install.ps1 offline tests (PowerShell 7)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tests/install_test.ps1
+      - name: install.ps1 offline tests (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tests/install_test.ps1
 
-  # Binaires Linux statiques (musl), tels que publiés dans les releases.
+  # Static Linux binaries (musl), as published in the releases.
   musl:
     name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}

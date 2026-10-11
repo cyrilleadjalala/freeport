@@ -1,0 +1,19 @@
+name: Audit
+on:
+  pull_request:
+    paths: ["Cargo.toml", "Cargo.lock"]
+  push:
+    branches: [main]
+    paths: ["Cargo.toml", "Cargo.lock"]
+  schedule:
+    - cron: "17 5 * * 1"   # every Monday
+
+jobs:
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit

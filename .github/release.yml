@@ -1,0 +1,14 @@
+# Layout of the automatically generated release notes.
+changelog:
+  exclude:
+    authors:
+      - dependabot
+  categories:
+    - title: New features
+      labels: [enhancement, feature]
+    - title: Fixes
+      labels: [bug, fix]
+    - title: Dependencies and maintenance
+      labels: [dependencies, chore]
+    - title: Other changes
+      labels: ["*"]
