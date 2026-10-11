@@ -3,6 +3,14 @@
 Libère un port en arrêtant le processus qui l'occupe. Linux, macOS, Windows,
 FreeBSD, OpenBSD, NetBSD ; TCP et UDP.
 
+## Installation
+
+- **Binaires** : télécharger l'archive de votre plateforme dans les
+  [releases GitHub](https://github.com/cyrilleadjalala/freeport/releases).
+- **Avec Cargo** : `cargo install freeport-cli` (la commande installée est `freeport`).
+
+## Utilisation
+
 ```
 freeport 3000            # arrêt propre (SIGTERM), puis forcé après 3 s si besoin
 freeport 3000 8080       # plusieurs ports
