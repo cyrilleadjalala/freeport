@@ -10,7 +10,7 @@ use std::time::Duration;
 
 /// Libère un ou plusieurs ports en arrêtant les processus qui les occupent.
 #[derive(Parser)]
-#[command(version, about)]
+#[command(name = "freeport", version, about)]
 struct Cli {
     /// Port(s) à libérer
     #[arg(required = true, value_parser = clap::value_parser!(u16).range(1..))]
