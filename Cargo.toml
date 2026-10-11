@@ -2,7 +2,7 @@
 name = "freeport-cli"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 description = "Libère un port en arrêtant proprement le processus qui l'occupe (Linux, macOS, Windows, BSD)"
 license = "MIT"
 readme = "README.md"
