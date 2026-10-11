@@ -3,7 +3,7 @@ name = "freeport-cli"
 version = "0.1.2"
 edition = "2024"
 rust-version = "1.95"
-description = "Libère un port en arrêtant proprement le processus qui l'occupe (Linux, macOS, Windows, BSD)"
+description = "Free a port by stopping the process that holds it (Linux, macOS, Windows, BSD)"
 license = "MIT"
 readme = "README.md"
 exclude = [".github/"]
@@ -17,7 +17,11 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4.6.11"
 listeners = "0.6"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sys-locale = "0.3.2"
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [profile.release]
