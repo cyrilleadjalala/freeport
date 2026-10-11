@@ -50,8 +50,13 @@ function Run($V, $Vars = @{}) {
     $env:FREEPORT_BASE_URL = "http://127.0.0.1:$PortNo"; $env:FREEPORT_VERSION = $V
     $env:FREEPORT_INSTALL_DIR = $Bin; $env:FREEPORT_LANG = "en"; $env:FREEPORT_SKIP_VERIFY = $null
     foreach ($K in $Vars.Keys) { Set-Item "env:$K" $Vars[$K] }
-    $script:Out = (& $Shell -NoProfile -Command "Get-Content '$Root\install.ps1' -Raw | Invoke-Expression" *>&1 | Out-String)
-    $script:Status = $LASTEXITCODE
+    # The child may (rightly) fail and write to stderr. Windows PowerShell 5.1
+    # turns native stderr into a terminating error under "Stop": capture it instead.
+    $Saved = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    try {
+        $script:Out = (& $Shell -NoProfile -Command "Get-Content '$Root\install.ps1' -Raw | Invoke-Expression" *>&1 | Out-String)
+        $script:Status = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $Saved }
 }
 
 try {
