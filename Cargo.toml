@@ -6,6 +6,7 @@ rust-version = "1.95"
 description = "Libère un port en arrêtant proprement le processus qui l'occupe (Linux, macOS, Windows, BSD)"
 license = "MIT"
 readme = "README.md"
+exclude = [".github/"]
 repository = "https://github.com/cyrilleadjalala/freeport"
 keywords = ["port", "kill", "process", "cli", "network"]
 categories = ["command-line-utilities", "network-programming"]
