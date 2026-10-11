@@ -228,18 +228,38 @@ fn quiet_prints_nothing_on_stdout() {
     assert!(wait_exit(&mut child));
 }
 
+/// `n` consecutive free ports, below the range operating systems hand out
+/// for ephemeral ports (32768+ on Linux, 49152+ on macOS and Windows). The
+/// other tests run in parallel and bind ephemeral ports: a range test that
+/// looked at the ports next to one of theirs would stop their processes too.
+fn free_window(n: u16) -> u16 {
+    (20000..30000u16)
+        .step_by(37)
+        .find(|&start| {
+            let held: Vec<_> = (start..start + n)
+                .map(|p| TcpListener::bind(("127.0.0.1", p)))
+                .collect();
+            held.iter().all(Result::is_ok)
+        })
+        .expect("no free window of ports")
+}
+
 #[test]
 fn range_stops_the_holder_and_summarises() {
-    let (mut child, port, _) = spawn_holder(&[]);
-    let (lo, hi) = (port.saturating_sub(2).max(1), port.saturating_add(2));
-    let out = run(&[&format!("{lo}-{hi}")]);
+    let start = free_window(5);
+    let port = start + 2;
+    let (mut child, _, _) = spawn_holder(&["--port", &port.to_string()]);
+    let out = run(&[&format!("{start}-{}", start + 4)]);
     assert!(out.status.success(), "{}", stderr(&out));
     let s = stdout(&out);
-    assert!(s.contains("stopped"), "{s}");
+    assert!(
+        s.contains(&format!("port {port}/tcp")) && s.contains("stopped"),
+        "{s}"
+    );
     // Free ports of a range stay silent; one summary line closes the run.
     assert!(!s.contains("already free\n"), "{s}");
     assert!(
-        s.contains("ports checked: 1 freed, 4 already free, 0 failed"),
+        s.contains("5 ports checked: 1 freed, 4 already free, 0 failed"),
         "{s}"
     );
     assert!(wait_exit(&mut child));
