@@ -24,6 +24,45 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked
+      # Le .exe ne doit pas dépendre du runtime Visual C++ (absent d'un Windows vierge).
+      - name: Vérifier le runtime C statique (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build --release --locked
+          if (Select-String -Path target\release\freeport.exe -Pattern "VCRUNTIME140" -Quiet) {
+            throw "freeport.exe dépend de VCRUNTIME140.dll : le runtime C n'est pas statique"
+          }
+
+  # Les scripts d'installation, tels qu'un utilisateur les lance (dernière release publiée).
+  installers:
+    name: install-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: install.sh
+        if: runner.os != 'Windows'
+        run: |
+          FREEPORT_INSTALL_DIR="$RUNNER_TEMP/bin" sh ./install.sh
+          "$RUNNER_TEMP/bin/freeport" --version
+      - name: install.ps1 (PowerShell 7)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:FREEPORT_INSTALL_DIR = "$env:RUNNER_TEMP\bin"
+          Get-Content .\install.ps1 -Raw | Invoke-Expression
+          & "$env:RUNNER_TEMP\bin\freeport.exe" --version
+      - name: install.ps1 (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:FREEPORT_INSTALL_DIR = "$env:RUNNER_TEMP\bin51"
+          Get-Content .\install.ps1 -Raw | Invoke-Expression
+          & "$env:RUNNER_TEMP\bin51\freeport.exe" --version
 
   # Binaires Linux statiques (musl), tels que publiés dans les releases.
   musl:

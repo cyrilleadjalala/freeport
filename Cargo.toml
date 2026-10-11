@@ -1,6 +1,6 @@
 [package]
 name = "freeport-cli"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.95"
 description = "Libère un port en arrêtant proprement le processus qui l'occupe (Linux, macOS, Windows, BSD)"
