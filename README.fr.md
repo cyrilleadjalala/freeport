@@ -46,7 +46,10 @@ Vérifiez : `freeport --version`.
 **Autres méthodes**
 
 - Archives par plateforme (avec leur `.sha256`) sur la [page des releases](https://github.com/cyrilleadjalala/freeport/releases).
-- `cargo binstall freeport-cli` : télécharge le binaire de la release, sans compilation.
+- `cargo binstall freeport-cli` : télécharge le binaire de la release, sans compilation. Il demande à l'API de
+  GitHub quels fichiers existent ; si GitHub répond `403` (limite de requêtes anonymes, fréquente sur les
+  machines de CI partagées), définissez `GITHUB_TOKEN` (n'importe quel jeton, sans permission particulière),
+  sinon il retombe sur la compilation.
 - `cargo install freeport-cli` : compile depuis les sources (nécessite Rust).
 
 Les installeurs lisent `FREEPORT_VERSION` (ex. `v0.2.0`), `FREEPORT_INSTALL_DIR`, `FREEPORT_LANG` (`en`/`fr`) et
