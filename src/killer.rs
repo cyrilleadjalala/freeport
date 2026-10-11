@@ -3,7 +3,9 @@
 
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-use sysinfo::{Pid, ProcessStatus, ProcessesToUpdate, Signal, System};
+use sysinfo::{
+    Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, Signal, System, UpdateKind,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -64,7 +66,12 @@ fn wait_gone(sys: &mut System, pid: Pid, timeout: Duration) -> bool {
 pub fn command_line(pid: u32) -> Option<String> {
     let pid = Pid::from_u32(pid);
     let mut sys = System::new();
-    sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+    // La ligne de commande n'est pas lue par défaut : il faut la demander.
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
+    );
     let p = sys.process(pid)?;
     let cmd: Vec<String> = p
         .cmd()

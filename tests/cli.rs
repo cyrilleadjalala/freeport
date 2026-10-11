@@ -1,4 +1,5 @@
 use std::io::{BufRead, BufReader};
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -15,9 +16,33 @@ fn holder_path() -> PathBuf {
     p
 }
 
+/// Processus de test, tué à la fin même si une assertion échoue.
+struct Holder(Child);
+
+impl Deref for Holder {
+    type Target = Child;
+    fn deref(&self) -> &Child {
+        &self.0
+    }
+}
+
+impl DerefMut for Holder {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.0
+    }
+}
+
+impl Drop for Holder {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 /// Lance un processus qui tient un port TCP et un port UDP.
-fn spawn_holder() -> (Child, u16, u16) {
+fn spawn_holder() -> (Holder, u16, u16) {
     let mut child = Command::new(holder_path())
+        .arg("--marqueur-de-test")
         .stdout(Stdio::piped())
         .spawn()
         .expect("exemple hold_port introuvable (cargo test le compile)");
@@ -26,7 +51,7 @@ fn spawn_holder() -> (Child, u16, u16) {
         .read_line(&mut line)
         .unwrap();
     let mut it = line.split_whitespace().map(|s| s.parse::<u16>().unwrap());
-    (child, it.next().unwrap(), it.next().unwrap())
+    (Holder(child), it.next().unwrap(), it.next().unwrap())
 }
 
 fn wait_exit(child: &mut Child) -> bool {
@@ -45,13 +70,14 @@ fn dry_run_reports_without_killing() {
     let (mut child, port, _) = spawn_holder();
     let out = freeport().args(["-n", &port.to_string()]).output().unwrap();
     assert!(out.status.success());
-    assert!(String::from_utf8_lossy(&out.stdout).contains("occupé par"));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("occupé par"), "{stdout}");
+    // La simulation montre la ligne de commande complète, arguments compris.
+    assert!(stdout.contains("--marqueur-de-test"), "{stdout}");
     assert!(
         child.try_wait().unwrap().is_none(),
         "le processus ne doit pas être tué"
     );
-    child.kill().unwrap();
-    child.wait().unwrap();
 }
 
 #[test]
@@ -90,4 +116,11 @@ fn rejects_invalid_port() {
     assert!(!freeport().arg("0").status().unwrap().success());
     assert!(!freeport().arg("70000").status().unwrap().success());
     assert!(!freeport().status().unwrap().success());
+}
+
+#[test]
+fn version_uses_command_name() {
+    let out = freeport().arg("--version").output().unwrap();
+    let v = String::from_utf8_lossy(&out.stdout);
+    assert!(v.starts_with("freeport "), "{v}");
 }
