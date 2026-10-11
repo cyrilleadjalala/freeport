@@ -30,16 +30,42 @@ jobs:
         run: |
           name=freeport-${{ github.ref_name }}-${{ matrix.target }}
           mkdir "$name"
-          cp README.md LICENSE "$name/"
+          cp README.md README.fr.md LICENSE "$name/"
           if [ "${{ runner.os }}" = "Windows" ]; then
             cp target/${{ matrix.target }}/release/freeport.exe "$name/"
             7z a "$name.zip" "$name"
-            echo "ASSET=$name.zip" >> "$GITHUB_ENV"
+            asset="$name.zip"
           else
             cp target/${{ matrix.target }}/release/freeport "$name/"
             tar czf "$name.tar.gz" "$name"
-            echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+            asset="$name.tar.gz"
           fi
+          # SHA-256 next to each archive; the installers verify it.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$asset" > "$asset.sha256"
+          else
+            shasum -a 256 "$asset" > "$asset.sha256"
+          fi
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
       - uses: softprops/action-gh-release@v2
         with:
-          files: ${{ env.ASSET }}
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+
+  # Fill in the release notes (from the merged PRs) when they were left empty.
+  notes:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate release notes if empty
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          body=$(gh release view "$TAG" --repo "$REPO" --json body --jq .body)
+          if [ -z "$body" ]; then
+            notes=$(gh api "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body)
+            gh release edit "$TAG" --repo "$REPO" --notes "$notes"
+          fi
