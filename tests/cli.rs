@@ -82,6 +82,12 @@ fn wait_exit(child: &mut Child) -> bool {
     false
 }
 
+/// Windows cannot ask a console program to stop politely, so there the holder
+/// is terminated and reported as "killed" rather than "stopped".
+fn stopped_or_killed(output: &str) -> bool {
+    output.contains("stopped") || output.contains("killed")
+}
+
 fn free_port() -> u16 {
     TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -122,7 +128,7 @@ fn frees_tcp_port_then_reports_already_free() {
     let (mut child, port, _) = spawn_holder(&[]);
     let out = run(&[&port.to_string()]);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert!(stdout(&out).contains("stopped"), "{}", stdout(&out));
+    assert!(stopped_or_killed(&stdout(&out)), "{}", stdout(&out));
     assert!(wait_exit(&mut child), "the process should have stopped");
 
     let again = run(&[&port.to_string()]);
@@ -253,7 +259,7 @@ fn range_stops_the_holder_and_summarises() {
     assert!(out.status.success(), "{}", stderr(&out));
     let s = stdout(&out);
     assert!(
-        s.contains(&format!("port {port}/tcp")) && s.contains("stopped"),
+        s.contains(&format!("port {port}/tcp")) && stopped_or_killed(&s),
         "{s}"
     );
     // Free ports of a range stay silent; one summary line closes the run.
